@@ -1,0 +1,64 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "robot_gesture",
+        "description": "Plays a physical gesture animation on the robot to reinforce emotional or social meaning during a lesson. Always pair with a matching spoken line -- never call silently. Use 'celebrate' only on genuine Step-4 (Practice) success; use 'encourage' during Step-2 gentle corrections; use 'think' when giving the child space to think; use 'wave' for greetings/goodbyes.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["celebrate", "nod", "think", "wave", "encourage"],
+              "description": "Which gesture to play."
+            }
+          },
+          "required": ["type"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "robot_move",
+        "description": "Moves the robot's physical base in a direction. Use ONLY when the lesson content is explicitly about movement or spatial vocabulary (e.g., teaching 'forward', 'left', 'right'). Do not use for general lesson pacing or excitement -- use robot_gesture for that instead.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string",
+              "enum": ["forward", "backward", "left", "right"],
+              "description": "Direction to move the robot base."
+            },
+            "distance": {
+              "type": "number",
+              "description": "Distance to move, in the robot's native unit (e.g., meters). Keep small for indoor classroom safety, e.g., 0.2-1.0.",
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          },
+          "required": ["direction", "distance"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "robot_speak_emotion",
+        "description": "Sets the robot's facial/voice emotion display to match the tone of the current spoken line. Can be called alongside almost any turn. Use 'gentle' during corrections, 'proud' or 'happy' during success, 'curious' when asking questions or exploring a new topic.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "emotion": {
+              "type": "string",
+              "enum": ["happy", "curious", "proud", "gentle"],
+              "description": "Emotion to display."
+            }
+          },
+          "required": ["emotion"]
+        }
+      }
+    }
+  ]
+}
