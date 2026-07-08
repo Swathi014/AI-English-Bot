@@ -26,6 +26,7 @@ Requires: GROQ_API_KEY environment variable (free at console.groq.com)
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from groq import Groq
@@ -47,6 +48,49 @@ TOOL_SCHEMA_PATH = BASE_DIR / "tool_schemas.json"
 # less nuanced pedagogical reasoning).
 MODEL_NAME = "llama-3.3-70b-versatile"
 MAX_TOKENS = 300  # keep responses short by design -- this is a voice agent for kids
+
+# Defensive safety net: matches Llama's occasional pseudo tool-call leak
+# pattern, e.g. "TOOL_CALL: <function=robot_gesture{"type": "think"}</function>"
+# This should not happen after the system_prompt.md fix (no more literal
+# SPEECH:/TOOL_CALL: templates in the few-shot examples), but hosted
+# quantized models can still slip into it occasionally, so we guard here too.
+_FUNC_LEAK_RE = re.compile(r"<function=(\w+)(\{.*?\})?", re.DOTALL)
+
+
+def _sanitize_speech(raw_text: str) -> str:
+    """
+    Strips any literal 'SPEECH:'/'TOOL_CALL:' text the model might leak
+    instead of using real function-calling, and best-effort recovers +
+    executes the intended tool call anyway so the robot action still
+    happens even when the model expressed it as text. Always returns
+    clean text safe to hand to the TTS layer.
+    """
+    if "TOOL_CALL:" not in raw_text.upper() and "<function=" not in raw_text:
+        return re.sub(r"^\s*SPEECH:\s*", "", raw_text, flags=re.IGNORECASE).strip()
+
+    logger.warning(
+        "Model leaked literal tool-call text instead of using function-calling. "
+        "Sanitizing before speaking (see system_prompt.md TOOL-USE PROTOCOL)."
+    )
+
+    # Keep only the part before the leak as the actual spoken content
+    speech_part = re.split(r"TOOL_CALL:|<function=", raw_text, maxsplit=1, flags=re.IGNORECASE)[0]
+    speech_part = re.sub(r"^\s*SPEECH:\s*", "", speech_part, flags=re.IGNORECASE).strip()
+
+    # Best-effort: recover and execute the intended tool call anyway
+    match = _FUNC_LEAK_RE.search(raw_text)
+    if match:
+        tool_name = match.group(1).lower()
+        arg_blob = match.group(2) or "{}"
+        try:
+            args = json.loads(arg_blob)
+        except json.JSONDecodeError:
+            args = {}
+        if tool_name in robot_interface.TOOL_DISPATCH:
+            logger.info(f"Recovered leaked tool call: {tool_name}({args})")
+            robot_interface.execute_tool_call(tool_name, args)
+
+    return speech_part
 
 
 def _load_system_prompt() -> str:
@@ -75,19 +119,33 @@ class TeacherLilyAgent:
     def end_session(self):
         self.memory.end_session_summary()
 
-    def handle_child_utterance(self, child_text: str) -> str:
+    def handle_child_utterance(self, child_text: str, detected_emotion: dict = None) -> str:
         """
         Takes what the child said (already transcribed), runs it through
         Groq/Llama with tool access, executes any robot tool calls, and
         returns the final spoken text to hand to the TTS layer.
+
+        `detected_emotion` (optional): a snapshot from vision_emotion.py,
+        e.g. {"emotion": "sad", "confidence": 0.7, "face_detected": True}.
+        Passed as a soft contextual signal, not a command -- the system
+        prompt instructs Lily to let it inform tone, never to name it
+        aloud ("I see you're sad") which would feel invasive to a child.
         """
         context_note = self.memory.as_context_string()
+
+        emotion_note = ""
+        if detected_emotion and detected_emotion.get("face_detected") and detected_emotion.get("confidence", 0) >= 0.4:
+            emotion_note = (
+                f" [Visual signal: the student's face currently reads as "
+                f"'{detected_emotion['emotion']}' (confidence {detected_emotion['confidence']}). "
+                f"Let this inform your tone subtly -- do not mention detecting it.]"
+            )
 
         # Inject memory context alongside the child's utterance so the
         # model can personalize without it living permanently in the
         # (cacheable) system prompt.
         user_content = (
-            f"[Context about this child: {context_note}]\n\n"
+            f"[Context about this child: {context_note}]{emotion_note}\n\n"
             f"Child said: \"{child_text}\""
         )
         self.history.append({"role": "user", "content": user_content})
@@ -118,7 +176,7 @@ class TeacherLilyAgent:
             self.history.append(message.model_dump(exclude_none=True))
 
             if message.content and message.content.strip():
-                speech_chunks.append(message.content.strip())
+                speech_chunks.append(_sanitize_speech(message.content))
 
             tool_calls = message.tool_calls or []
             if not tool_calls:

@@ -36,6 +36,18 @@ VALID_GESTURES = {"celebrate", "nod", "think", "wave", "encourage"}
 VALID_DIRECTIONS = {"forward", "backward", "left", "right"}
 VALID_EMOTIONS = {"happy", "curious", "proud", "gentle"}
 
+# Optional hook so a UI (e.g. the on-screen robot face) can react live to
+# every gesture/emotion call, without robot_interface needing to know
+# anything about Tkinter or the UI's internals. main.py wires this up.
+_ui_hook = None
+
+
+def set_ui_hook(fn):
+    """fn(kind: str, value: str) is called on every successful gesture/emotion.
+    kind is 'gesture' or 'emotion'; value is the type/emotion string."""
+    global _ui_hook
+    _ui_hook = fn
+
 
 def robot_gesture(type: str) -> dict:
     """Play a physical gesture on the robot."""
@@ -49,6 +61,9 @@ def robot_gesture(type: str) -> dict:
         pass
     else:
         time.sleep(0.1)  # simulate action latency
+
+    if _ui_hook:
+        _ui_hook("gesture", type)
 
     return {"status": "ok", "gesture": type}
 
@@ -80,6 +95,9 @@ def robot_speak_emotion(emotion: str) -> dict:
     if HARDWARE_CONNECTED:
         # TODO: replace with real call, e.g. robot.set_face(emotion)
         pass
+
+    if _ui_hook:
+        _ui_hook("emotion", emotion)
 
     return {"status": "ok", "emotion": emotion}
 
