@@ -1,16 +1,6 @@
 groq>=0.11.0
 python-dotenv>=1.0.0
 
-# Face detection (used by vision_emotion.py for the face-finding step,
-# NOT the emotion classifier itself). Pinned to a version that plays
-# well with typical robotics/CV stacks (mediapipe, etc.) rather than
-# whatever the latest major release happens to be.
-opencv-python==4.9.0.80
-
-# Pinned <2.0 to stay compatible with scikit-learn 1.3.x and mediapipe,
-# which are common in robotics/CV stacks and don't support numpy 2.x.
-numpy>=1.23.5,<2.0
-
 # Speech-to-text (Whisper, local/offline)
 openai-whisper>=20231117
 sounddevice>=0.4.6
@@ -19,25 +9,3 @@ scipy>=1.11.0
 # Text-to-speech
 gTTS>=2.5.0
 pygame>=2.5.0
-
-# ---------------------------------------------------------------------
-# NOT included here on purpose: tensorflow / keras.
-#
-# vision_emotion.py only imports TensorFlow lazily, inside
-# _EmotionClassifier._load(), and only if a real model file is found at
-# LILY_EMOTION_MODEL_PATH. If you don't set that env var, the emotion
-# classifier runs in graceful no-signal fallback mode and TensorFlow is
-# never imported at all -- so it's safe to run this file as-is even in
-# a venv that doesn't have TensorFlow installed.
-#
-# If/when you're ready to wire in your real trained emotion model:
-# install a TensorFlow version that matches what your Features 5 & 6
-# project already uses in THIS venv, rather than an unpinned version --
-# mixing TF/Keras major versions in one environment breaks mediapipe,
-# scikit-learn, and streamlit (numpy/protobuf version conflicts).
-#
-# Check what you already have first:
-#   python -c "import tensorflow as tf; print(tf.__version__)"
-# Then install the matching version explicitly, e.g.:
-#   pip install tensorflow==2.14.0 "numpy<2.0,>=1.23.5" "protobuf>=3.20.3,<4"
-# ---------------------------------------------------------------------

@@ -18,43 +18,12 @@ teacher_lily/
 ├── memory.py              # Per-child JSON memory (likes, mistakes, sessions)
 ├── robot_interface.py     # Hardware abstraction layer -- wire your robot SDK here
 ├── speech_io.py            # Whisper STT + gTTS/pygame TTS
-├── vision_emotion.py        # Background face + emotion detection thread
-├── ui.py                    # Live transcript window (Tkinter)
 ├── system_prompt.md        # Lily's full behavioral spec (persona, workflow, rules)
 ├── tool_schemas.json       # OpenAI-compatible tool definitions (Groq's format)
 ├── requirements.txt
 ├── .env.example
 └── child_profiles/         # Auto-created; one JSON file per child
 ```
-
-## Live UI
-
-Running `python main.py` now opens a small window showing the live transcript
-(what Whisper heard, what Lily said) and the currently detected emotion, so
-you can see what's happening without relying on audio alone during dev/debug.
-
-- `python main.py --child aanya` → voice mode **with the UI window** (default)
-- `python main.py --no-ui --child aanya` → voice mode, console-only (old behavior)
-- `python main.py --text --child aanya` → typed text mode, console-only, no mic/UI
-
-Click "Stop Session" or close the window to end cleanly. The voice loop runs
-in a background thread; the UI owns the main thread (a Tkinter requirement).
-
-## Windows Setup Gotchas
-
-**ffmpeg not on PATH** → Whisper transcription silently fails with
-`[WinError 2] The system cannot find the file specified`. Fix:
-```powershell
-choco install ffmpeg
-```
-Then **restart your terminal/IDE** so the updated PATH takes effect.
-`main.py` now checks for this upfront in voice mode and exits with a clear
-message instead of failing on every turn.
-
-**`PermissionError` on `lily_output.mp3`** → this was a real bug (fixed):
-pygame kept a Windows file-handle lock on a fixed temp filename between
-turns. `speech_io.py` now uses a unique filename per utterance and
-explicitly unloads the track after playback.
 
 ## Setup (all free)
 
@@ -155,45 +124,6 @@ If Lily is too chatty or under-uses the robot:
 If robot actions fire too often or too rarely, adjust the Trigger Rules
 in the `### TOOL-USE PROTOCOL ###` section of `system_prompt.md` — the model
 follows these rules directly when deciding whether to emit a tool call.
-
-## Seeing the Student: Face + Emotion Detection
-
-`vision_emotion.py` runs a background thread that:
-1. Reads the default camera continuously (independent of the voice loop, so
-   nothing blocks waiting on frames).
-2. Detects the largest face in view (the student in front of the robot) using
-   OpenCV's bundled Haar cascade — no extra downloads.
-3. Classifies emotion via a pluggable Keras model (currently wired to your
-   trained 5-class model: angry, happy, neutral, sad, surprise).
-4. Applies **temporal smoothing** (votes over the last 8 predictions),
-   **confidence thresholding** (ignores single low-confidence frames), and a
-   **cooldown** (4s minimum between state changes) — the same pattern as your
-   existing Features 5 & 6 pipeline, so results don't flicker turn-to-turn.
-
-Before each conversation turn, `main.py` reads the current snapshot and passes
-it into `agent.handle_child_utterance(..., detected_emotion=...)`, which
-injects it as a soft contextual hint in the prompt (see the `### STUDENT
-EMOTION AWARENESS ###` section of `system_prompt.md`). Lily uses it to adjust
-tone and pacing — she never says "I see you're sad" out loud, since naming a
-detected emotion at a child feels invasive rather than caring.
-
-**Your model is already wired in:**
-```
-LILY_EMOTION_MODEL_PATH=D:/EVOLVE ROBOTICS/Emotion Detection using Opencv/Multi-person-emotion-detection/emotion_detection_model.keras
-```
-`vision_emotion.py` introspects the model's actual `input_shape` at load time
-(size + grayscale/RGB) rather than assuming a fixed shape, so it adapts to
-your model automatically. `EMOTION_LABELS` is set to `["angry", "happy",
-"neutral", "sad", "surprise"]`, matching your training folder order
-(Keras sorts class folders alphabetically, confirmed from your dataset
-structure). Run `python test_emotion_model.py` first to verify the model
-loads correctly and see live predictions overlaid on your webcam feed
-before running the full voice pipeline.
-
-**No model file? No camera?** The system degrades gracefully — it logs a
-warning and reports a `neutral / no-signal` state rather than crashing, so
-the rest of the app (conversation, tools, memory) keeps working while you
-finish training or wiring the real model.
 
 ## Model Choice
 
