@@ -75,33 +75,19 @@ class TeacherLilyAgent:
     def end_session(self):
         self.memory.end_session_summary()
 
-    def handle_child_utterance(self, child_text: str, detected_emotion: dict = None) -> str:
+    def handle_child_utterance(self, child_text: str) -> str:
         """
         Takes what the child said (already transcribed), runs it through
         Groq/Llama with tool access, executes any robot tool calls, and
         returns the final spoken text to hand to the TTS layer.
-
-        `detected_emotion` (optional): a snapshot from vision_emotion.py,
-        e.g. {"emotion": "sad", "confidence": 0.7, "face_detected": True}.
-        Passed as a soft contextual signal, not a command -- the system
-        prompt instructs Lily to let it inform tone, never to name it
-        aloud ("I see you're sad") which would feel invasive to a child.
         """
         context_note = self.memory.as_context_string()
-
-        emotion_note = ""
-        if detected_emotion and detected_emotion.get("face_detected") and detected_emotion.get("confidence", 0) >= 0.4:
-            emotion_note = (
-                f" [Visual signal: the student's face currently reads as "
-                f"'{detected_emotion['emotion']}' (confidence {detected_emotion['confidence']}). "
-                f"Let this inform your tone subtly -- do not mention detecting it.]"
-            )
 
         # Inject memory context alongside the child's utterance so the
         # model can personalize without it living permanently in the
         # (cacheable) system prompt.
         user_content = (
-            f"[Context about this child: {context_note}]{emotion_note}\n\n"
+            f"[Context about this child: {context_note}]\n\n"
             f"Child said: \"{child_text}\""
         )
         self.history.append({"role": "user", "content": user_content})
